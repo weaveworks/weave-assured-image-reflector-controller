@@ -527,7 +527,7 @@ func TestImageRepositoryReconciler_scan(t *testing.T) {
 				repo.SetAnnotations(map[string]string{meta.ReconcileRequestAnnotation: tt.annotation})
 			}
 
-			ref, err := parseImageReference(imgRepo)
+			ref, err := r.parseImageReference(imgRepo, false)
 			g.Expect(err).ToNot(HaveOccurred())
 
 			opts := []remote.Option{}
@@ -603,12 +603,14 @@ func TestGetLatestTags(t *testing.T) {
 	}
 }
 
-func TestParseImageReference(t *testing.T) {
+func Test_parseImageReference(t *testing.T) {
 	tests := []struct {
-		name    string
-		url     string
-		wantErr bool
-		wantRef string
+		name          string
+		url           string
+		insecure      bool
+		allowInsecure bool
+		wantErr       bool
+		wantRef       string
 	}{
 		{
 			name:    "simple valid url",
@@ -631,16 +633,37 @@ func TestParseImageReference(t *testing.T) {
 			wantErr: false,
 			wantRef: "example.com:9999/foo/bar",
 		},
+		{
+			name:          "with allowed insecure",
+			url:           "example.com/foo/bar",
+			insecure:      true,
+			allowInsecure: true,
+			wantErr:       false,
+			wantRef:       "example.com/foo/bar",
+		},
+		{
+			name:          "with disallowed insecure",
+			url:           "example.com/foo/bar",
+			insecure:      true,
+			allowInsecure: false,
+			wantErr:       true,
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			g := NewWithT(t)
 
-			ref, err := parseImageReference(tt.url)
+			r := &ImageRepositoryReconciler{
+				AllowInsecureHTTP: tt.allowInsecure,
+			}
+			ref, err := r.parseImageReference(tt.url, tt.insecure)
 			g.Expect(err != nil).To(Equal(tt.wantErr))
 			if err == nil {
 				g.Expect(ref.String()).To(Equal(tt.wantRef))
+				if tt.insecure {
+					g.Expect(ref.Context().Registry.Scheme()).To(Equal("http"))
+				}
 			}
 		})
 	}
